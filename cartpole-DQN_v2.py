@@ -59,13 +59,14 @@ class DQN(nn.Module):
         self.linear3 = torch.nn.Linear(32, outputs)
     
     def forward(self, x):
+        x = x.to(device)
         h_relu1 = self.linear1(x).clamp(min=0)
         h_relu2 = self.linear2(h_relu1).clamp(min=0)
         y_pred = self.linear3(h_relu2)
         return y_pred
 
-policy_net = DQN(n_state_values,n_actions).double()
-target_net = DQN(n_state_values,n_actions).double()
+policy_net = DQN(n_state_values,n_actions).double().to(device)
+target_net = DQN(n_state_values,n_actions).double().to(device)
 
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
@@ -186,15 +187,19 @@ def optimize_model():
         return
     transition_list = replay_memory.sample(BATCH_SIZE)
     for i in range(BATCH_SIZE):
-        state = transition_list[i].state
-        action = transition_list[i].action
-        reward = transition_list[i].reward
+        state = torch.from_numpy(transition_list[i].state).to(device).double()
+        action = torch.tensor([transition_list[i].action]).to(device)
+        reward = torch.tensor([transition_list[i].reward]).to(device).double()
+        state_action_value = policy_net(state).gather(0,action).max(0)[0].to(device).double()
         next_state = transition_list[i].next_state
-        state_action_value = policy_net(torch.from_numpy(state)).gather(0,torch.tensor([action])).max(0)[0].double()
-        expected_state_action_value = target_net(torch.from_numpy(next_state)).max(0)[0] * GAMMA + reward
-        expected_state_action_value = expected_state_action_value.double()
+        if next_state is None:
+            expected_state_action_value = reward
+        else:
+            next_state = torch.from_numpy(next_state).to(device).double()
+            expected_state_action_value = target_net(next_state).max(0)[0] * GAMMA + reward
+        expected_state_action_value = expected_state_action_value.to(device).double()
         loss = nn.SmoothL1Loss().cuda()
-        actual_loss = loss(state_action_value,expected_state_action_value).cuda()
+        actual_loss = loss(state_action_value,expected_state_action_value).to(device).double()
         optimizer.zero_grad()
         actual_loss.backward()
         for param in policy_net.parameters():
