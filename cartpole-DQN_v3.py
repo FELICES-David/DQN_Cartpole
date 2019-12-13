@@ -42,14 +42,15 @@ n_state_values = 4
 
 
 ##Hyperparamaters
-NUM_EPISODES = 1000
+NUM_EPISODES = 3000
 MEMORY_CAPACITY = 30000
 BATCH_SIZE = 1024
-GAMMA = 0.95
+GAMMA = 0.99
 EPS = 0.05
-TARGET_UPDATE = 10
+TARGET_UPDATE = 5
 PLOT_UPDATE = 15
-LEARNING_RATE = 0.0006
+LEARNING_RATE = 0.0005
+SOFT_UPDATE = 0.05
 SUCCESS = 100
 TRIALS_MAX = 10
 EVALUATIONS = 100
@@ -64,12 +65,12 @@ class DQN(nn.Module):
         self.linear2 = torch.nn.Linear(16, 32)
         self.linear3 = torch.nn.Linear(32, 64)
         self.linear4 = torch.nn.Linear(64, outputs)
+        self.relu = nn.ReLU()
     
     def forward(self, x):
-        x = self.linear1(x)
-        x = self.linear2(x)
-        x = self.linear3(x)
-        nn.ReLU()
+        x = self.relu(self.linear1(x))
+        x = self.relu(self.linear2(x))
+        x = self.relu(self.linear3(x))
         x = self.linear4(x)
         return x
 
@@ -190,13 +191,14 @@ while Training == 'Failure'and Trials < TRIALS_MAX:
                 if i_episode % PLOT_UPDATE == PLOT_UPDATE - 1:
                     plot_durations()
                 break
-        if i_episode % TARGET_UPDATE == 0:
-            target_net.load_state_dict(policy_net.state_dict())
+        if i_episode % TARGET_UPDATE == 0:    
+            for target_param, policy_param in zip(target_net.parameters(), policy_net.parameters()):
+                target_param.data.copy_(SOFT_UPDATE*policy_param.data + (1.0-SOFT_UPDATE)*target_param.data)
         if means[-1] >= SUCCESS:
             print('Success')
             Training = 'Success'
             break
-        if means[-1] < means_max * 0.8:
+        if means[-1] < means_max * 0.5:
             print('Failure')
             break
 
