@@ -8,16 +8,21 @@ Created on Mon Dec 23 15:35:55 2019
 import random
 import gym
 import numpy as np
+import tensorflow as tf
 from collections import deque
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 import matplotlib.pyplot as plt
 
+print(tf.test.is_gpu_available())
+
 ENV_NAME = "CartPole-v1"
 MAX_RUN = 1000
 SUCCESS = 200
 MEAN_LEN = 10
+nb_eval = 100
+nb_replay = 10
 
 GAMMA = 0.95
 LEARNING_RATE = 0.001
@@ -39,7 +44,8 @@ class DQNSolver:
         self.memory = deque(maxlen=MEMORY_SIZE)
 
         self.model = Sequential()
-        self.model.add(Dense(24, input_shape=(observation_space,), activation="relu"))
+        self.model.add(Dense(12, input_shape=(observation_space,), activation="relu"))
+        self.model.add(Dense(24, activation="relu"))
         self.model.add(Dense(24, activation="relu"))
         self.model.add(Dense(self.action_space, activation="linear"))
         self.model.compile(loss="mse", optimizer=Adam(lr=LEARNING_RATE))
@@ -75,10 +81,11 @@ def cartpole():
     run = 0
     means = []
     durations_t = []
-    last_mean = 0
+    #last_trial = 0
+    last_mean=0
     while run < MAX_RUN :
         if last_mean >= SUCCESS:
-            print('Succes !')
+            print('Success !')
             break
         run += 1
         state = env.reset()
@@ -103,6 +110,7 @@ def cartpole():
                     means_plot = np.concatenate((np.zeros(MEAN_LEN-1),np.array(means)))
                     plt.plot(means_plot)
                 plt.show()
+                #last_trial = step
                 break
             dqn_solver.experience_replay()
 
@@ -111,25 +119,25 @@ def evaluation(number_of_tests):
     global all_tests
     global mean_reward
     max_reward = 0
-    best_test = [0, []]
+    best_test = [0,[],[]]
     all_tests = []
     mean_reward = 0
     for i in range(number_of_tests):
-        state = env.reset()
-        state = np.reshape(state, [1, observation_space])
         step = 0
         cumulative_reward = 0
-        current_test = [cumulative_reward, [state]] 
+        state = env.reset()
+        current_test = [cumulative_reward, state, []]
+        state = np.reshape(state, [1, observation_space])
         while True:
             step += 1
-            env.render()
+            #env.render()
             action = dqn_solver.act(state)
             state_next, reward, terminal, info = env.step(action)
             state_next = np.reshape(state_next, [1, observation_space])
             state = state_next
             cumulative_reward += reward
             current_test[0] = cumulative_reward
-            current_test[1].append(state)
+            current_test[2].append(action)
             if terminal:
                 all_tests.append(current_test)
                 if cumulative_reward > max_reward:
@@ -141,8 +149,23 @@ def evaluation(number_of_tests):
         mean_reward += all_tests[i][0]/number_of_tests
     return all_tests, best_test, mean_reward
 
+def replay_test(test):
+    for k in range(nb_replay):
+        env.reset()
+        env.env.state = test[1]
+        i=0
+        while True:
+            env.render()
+            _,_,terminal,_ = env.step(test[2][i])
+            i += 1
+            if terminal:
+                break
+    env.close()
+
 if __name__ == "__main__":
     cartpole()
-    evaluation(100)
-    print(best_test)
-    print(mean_reward)
+    evaluation(nb_eval)
+    print("Best result:",best_test[0])
+    print("Average score in", str(nb_eval),"tests:", mean_reward)
+    print('Replaying best test...')
+    replay_test(best_test)
